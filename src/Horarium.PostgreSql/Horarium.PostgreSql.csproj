@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>netstandard2.1;net6.0;net7.0;net8.0</TargetFrameworks>
+    <Description>Horarium.PostgreSql</Description>
+    <Version>1.0.0$(VersionSuffix)</Version>
+    <Title>Horarium.PostgreSql</Title>
+    <Authors>r.boykov</Authors>
+    <PackageDescription>Horarium.PostgreSql is the .Net library to support PostgreSql in Horarium</PackageDescription>
+    <RepositoryUrl>https://github.com/gendalf90/Horarium</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/Tinkoff/Horarium</PackageProjectUrl>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Horarium\Horarium.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition=" '$(TargetFramework)' == 'netstandard2.1'">
+    <PackageReference Include="Npgsql" Version="7.0.6" />
+  </ItemGroup>
+
+  <ItemGroup Condition=" '$(TargetFramework)' == 'net6.0'">
+    <PackageReference Include="Npgsql" Version="7.0.6" />
+  </ItemGroup>
+
+  <ItemGroup Condition=" '$(TargetFramework)' == 'net7.0'">
+    <PackageReference Include="Npgsql" Version="7.0.6" />
+  </ItemGroup>
+
+  <ItemGroup Condition=" '$(TargetFramework)' == 'net8.0'">
+    <PackageReference Include="Npgsql" Version="8.0.1" />
+  </ItemGroup>
+
+</Project>

@@ -5,11 +5,16 @@ namespace Horarium.IntegrationTest.Jobs
 {
     public class OneTimeJob : IJob<int>
     {
-        public static bool Run;
+        private readonly IDependency _dependency;
+
+        public OneTimeJob(IDependency dependency)
+        {
+            _dependency = dependency;
+        }
 
         public async Task Execute(int param)
         {
-            Run = true;
+            await _dependency.Call(param.ToString());
         }
     }
 }

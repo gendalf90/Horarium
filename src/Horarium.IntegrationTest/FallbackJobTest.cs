@@ -1,5 +1,10 @@
+using System;
 using System.Threading.Tasks;
+using Horarium.IntegrationTest.Jobs;
 using Horarium.IntegrationTest.Jobs.Fallback;
+using Horarium.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
+using Moq;
 using Xunit;
 
 namespace Horarium.IntegrationTest
@@ -7,20 +12,40 @@ namespace Horarium.IntegrationTest
     [Collection(IntegrationTestCollection)]
     public class FallbackJobTest : IntegrationTestBase
     {
+        private readonly IHorarium _horarium;
+        private readonly Mock<IDependency> _dependency = new();
+        private readonly TaskCompletionSource _completion = new();
+        
         public FallbackJobTest()
         {
-            FallbackNextJob.ExecutedCount = 0;
-            FallbackMainJob.ExecutedCount = 0;
-            FallbackJob.ExecutedCount = 0;
+            _dependency
+                .Setup(x => x.Call("1"))
+                .Returns(Task.FromException(new Exception()));
+
+            _dependency
+                .Setup(x => x.Call("2"))
+                .Returns(Task.CompletedTask);
+
+            _dependency
+                .Setup(x => x.Call("3"))
+                .Callback(() => _completion.SetResult())
+                .Returns(Task.CompletedTask);
+            
+            _horarium = Initialize(services =>
+            {
+                services.AddSingleton(_dependency.Object);
+                services.AddTransient<FallbackMainJob>();
+                services.AddTransient<FallbackJob>();
+                services.AddTransient<FallbackNextJob>();
+            });
         }
         
         [Fact]
         public async Task FallbackJobAdded_FallbackJobExecuted()
         {
-            var horarium = CreateHorariumServer();
-
             var mainJobRepeatCount = 2;
-            await horarium.Schedule<FallbackMainJob, int>(1, conf => 
+
+            await _horarium.Schedule<FallbackMainJob, int>(1, conf => 
                                                               conf.MaxRepeatCount(mainJobRepeatCount)
                                                                   .AddRepeatStrategy<FallbackRepeatStrategy>()
                                                                   .AddFallbackConfiguration(configure =>
@@ -34,35 +59,34 @@ namespace Horarium.IntegrationTest
                                                                                           int>(3);
                                                                               })));
 
-            await Task.Delay(7000);
+            await _completion.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
-            horarium.Dispose();
+            await Task.Delay(3000);
 
-            Assert.Equal(mainJobRepeatCount, FallbackMainJob.ExecutedCount);
-            Assert.Equal(1, FallbackJob.ExecutedCount);
-            Assert.Equal(1, FallbackNextJob.ExecutedCount);
+            _dependency.Verify(x => x.Call("1"), Times.Exactly(mainJobRepeatCount));
+            _dependency.Verify(x => x.Call("2"), Times.Once());
+            _dependency.Verify(x => x.Call("3"), Times.Once());
         }
         
         [Fact]
         public async Task FallbackJobGoNextStrategy_NextJobExecuted()
         {
-            var horarium = CreateHorariumServer();
-
             var mainJobRepeatCount = 2;
-            await horarium.Schedule<FallbackMainJob, int>(1, conf => 
+
+            await _horarium.Schedule<FallbackMainJob, int>(1, conf => 
                                                               conf.MaxRepeatCount(mainJobRepeatCount)
                                                                   .AddRepeatStrategy<FallbackRepeatStrategy>()
                                                                   .AddFallbackConfiguration(
                                                                       configure => configure.GoToNextJob())
-                                                                  .Next<FallbackNextJob, int>(2)
+                                                                  .Next<FallbackNextJob, int>(3)
             );
             
-            await Task.Delay(7000);
+            await _completion.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
-            horarium.Dispose();
+            await Task.Delay(3000);
 
-            Assert.Equal(mainJobRepeatCount,  FallbackMainJob.ExecutedCount);
-            Assert.Equal(1, FallbackNextJob.ExecutedCount);
+            _dependency.Verify(x => x.Call("1"), Times.Exactly(mainJobRepeatCount));
+            _dependency.Verify(x => x.Call("3"), Times.Once());
         }
     }
 }

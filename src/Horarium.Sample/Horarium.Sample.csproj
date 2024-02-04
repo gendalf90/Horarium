@@ -1,10 +1,23 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>netcoreapp2.2</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <OutputType>Exe</OutputType>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.0" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.0" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Horarium.Mongo\Horarium.Mongo.csproj" />
+    <ProjectReference Include="..\Horarium.InMemory\Horarium.InMemory.csproj" />
+    <ProjectReference Include="..\Horarium.PostgreSql\Horarium.PostgreSql.csproj" />
+    <ProjectReference Include="..\Horarium.EF\Horarium.EF.csproj" />
     <ProjectReference Include="..\Horarium\Horarium.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="appsettings.json">
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 </Project>

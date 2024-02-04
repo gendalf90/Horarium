@@ -1,9 +1,11 @@
 using System;
-using System.Diagnostics;
+using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading.Tasks;
 using Horarium.IntegrationTest.Jobs;
 using Horarium.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
+using Moq;
 using Xunit;
 
 namespace Horarium.IntegrationTest
@@ -11,29 +13,44 @@ namespace Horarium.IntegrationTest
     [Collection(IntegrationTestCollection)]
     public class RepeatFailedJobTest : IntegrationTestBase
     {
+        private readonly IHorarium _horarium;
+        private readonly Mock<IDependency> _dependency = new();
+        private readonly TaskCompletionSource _completion = new();
+        private readonly ConcurrentQueue<DateTime> _executingTime = new();
+        
+        public RepeatFailedJobTest()
+        {
+            _dependency
+                .Setup(x => x.Call("test"))
+                .Callback(() => _executingTime.Enqueue(DateTime.Now))
+                .Returns(Task.FromException(new Exception()));
+
+            _dependency
+                .Setup(x => x.Call(RepeatFailedJob.FailParam))
+                .Callback(() => _completion.SetResult())
+                .Returns(Task.CompletedTask);
+            
+            _horarium = Initialize(services =>
+            {
+                services.AddSingleton(_dependency.Object);
+                services.AddTransient<RepeatFailedJob>();
+            });
+        }
+        
         [Fact]
         public async Task RepeatFailedJob_UseRepeatStrategy()
         {
-            var horarium = CreateHorariumServer();
-            
-            await horarium.Create<RepeatFailedJob, string>(string.Empty)
+            await _horarium
+                .Create<RepeatFailedJob, string>("test")
                 .AddRepeatStrategy<RepeatFailedJobTestStrategy>()
                 .MaxRepeatCount(5)
                 .Schedule();
 
-            var watch = Stopwatch.StartNew();
-            
-            while (!RepeatFailedJob.RepeatIsOk)
-            {
-                await Task.Delay(100);
+            await _completion.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
-                if (watch.Elapsed >= TimeSpan.FromSeconds(10))
-                {
-                    throw new Exception("Time is over");
-                }
-            }
+            await Task.Delay(3000);
             
-            var executingTimes = RepeatFailedJob.ExecutingTime.ToArray();
+            var executingTimes = _executingTime.ToArray();
 
             Assert.Equal(5, executingTimes.Length);
 
@@ -42,9 +59,9 @@ namespace Horarium.IntegrationTest
             foreach (var time in executingTimes)
             {
                 Assert.Equal(nextJobTime, time, TimeSpan.FromMilliseconds(999));
+
                 nextJobTime = time.AddSeconds(1);
             }
-            
         }
     }
     

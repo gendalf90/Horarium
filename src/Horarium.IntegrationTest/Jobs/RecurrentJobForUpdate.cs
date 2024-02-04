@@ -1,4 +1,5 @@
-﻿using System.Collections.Concurrent;
+﻿using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Horarium.Interfaces;
 
@@ -6,12 +7,20 @@ namespace Horarium.IntegrationTest.Jobs
 {
     public class RecurrentJobForUpdate : IJobRecurrent
     {
-        public static readonly ConcurrentStack<RecurrentJobForUpdate> StackJobs = new ConcurrentStack<RecurrentJobForUpdate>();
+        private readonly IDependency _dependency;
+
+        public RecurrentJobForUpdate(IDependency dependency)
+        {
+            _dependency = dependency;
+        }
 
         public async Task Execute()
         {
-            StackJobs.Push(this);
-            await Task.Delay(1000000);
+            await _dependency.Call(TestParam);
+
+            await Task.Delay(TimeSpan.FromSeconds(25));
         }
+
+        public static string TestParam => nameof(RecurrentJobForUpdate);
     }
 }
