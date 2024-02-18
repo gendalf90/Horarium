@@ -12,9 +12,19 @@ public static class Extensions
         return modelBuilder;
     }
 
-    public static IServiceProvider CreateHorariumDatabase(this IServiceProvider provider, Action<DbContextOptionsBuilder> configuration)
+    public static IServiceProvider CreateHorariumDatabase(
+        this IServiceProvider provider, 
+        Action<DbContextOptionsBuilder> configuration,
+        string scheme = "public")
     {
-        using var context = new HorariumContext(configuration);
+        ArgumentNullException.ThrowIfNull(configuration, nameof(configuration));
+
+        if (string.IsNullOrWhiteSpace(scheme))
+        {
+            throw new ArgumentNullException(nameof(scheme), "Scheme is empty");
+        }
+        
+        using var context = new HorariumContext(configuration, scheme);
 
         context.Database.EnsureCreated();
 
@@ -24,10 +34,12 @@ public static class Extensions
     private class HorariumContext : DbContext
     {
         private readonly Action<DbContextOptionsBuilder> _configuration;
+        private readonly string _scheme;
 
-        public HorariumContext(Action<DbContextOptionsBuilder> configuration)
+        public HorariumContext(Action<DbContextOptionsBuilder> configuration, string scheme)
         {
             _configuration = configuration;
+            _scheme = scheme;
         }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
@@ -37,7 +49,7 @@ public static class Extensions
         
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            modelBuilder.UseHorarium();
+            modelBuilder.UseHorarium().HasDefaultSchema(_scheme);
         }
     }
 }

@@ -14,10 +14,12 @@ namespace Horarium.PostgreSql
     internal class PostgreRepository : IJobRepository
     {
         private readonly NpgsqlDataSource _dataSource;
+        private readonly string _scheme;
 
-        public PostgreRepository(NpgsqlDataSource dataSource)
+        public PostgreRepository(NpgsqlDataSource dataSource, string scheme)
         {
             _dataSource = dataSource;
+            _scheme = scheme;
         }
 
         async Task IJobRepository.AddJob(JobDb job)
@@ -36,8 +38,8 @@ namespace Horarium.PostgreSql
                 shift = AddParametersPlaceholder(builder, true, shift);
             }
 
-            builder.AppendLine(@"ON CONFLICT (""JobId"") DO UPDATE SET 
-                ""ParentJobId"" = CASE WHEN public.""horarium.jobs"".""JobId"" = $1 THEN null ELSE $1 END,
+            builder.AppendLine(@$"ON CONFLICT (""JobId"") DO UPDATE SET 
+                ""ParentJobId"" = CASE WHEN {_scheme}.""horarium.jobs"".""JobId"" = $1 THEN null ELSE $1 END,
                 ""StartAt"" = EXCLUDED.""StartAt""");
 
             await using var conn = await _dataSource.OpenConnectionAsync();
@@ -77,10 +79,10 @@ namespace Horarium.PostgreSql
             return currentShift;
         }
 
-        private static void AddInsertPlaceholder(StringBuilder builder)
+        private void AddInsertPlaceholder(StringBuilder builder)
         {
-            builder.AppendLine(@"
-                INSERT INTO public.""horarium.jobs"" 
+            builder.AppendLine(@$"
+                INSERT INTO {_scheme}.""horarium.jobs"" 
                 (
                     ""JobId"", 
                     ""JobKey"", 
@@ -151,7 +153,7 @@ namespace Horarium.PostgreSql
 
             await using var conn = await _dataSource.OpenConnectionAsync();
 
-            await using var delete = new NpgsqlCommand(@"DELETE FROM public.""horarium.jobs"" WHERE ""JobKey"" = $1 AND ""Status"" = 2", conn);
+            await using var delete = new NpgsqlCommand(@$"DELETE FROM {_scheme}.""horarium.jobs"" WHERE ""JobKey"" = $1 AND ""Status"" = 2", conn);
 
             delete.Parameters.AddWithValue(NpgsqlDbType.Text, job.JobKey);
 
@@ -175,8 +177,8 @@ namespace Horarium.PostgreSql
             
             await using var conn = await _dataSource.OpenConnectionAsync();
 
-            await using var cmd = new NpgsqlCommand(@"
-                UPDATE public.""horarium.jobs"" 
+            await using var cmd = new NpgsqlCommand(@$"
+                UPDATE {_scheme}.""horarium.jobs"" 
                 SET ""Status"" = 2, ""Error"" = $2
                 WHERE ""JobId"" = $1
             ", conn);
@@ -193,9 +195,9 @@ namespace Horarium.PostgreSql
             
             await using var conn = await _dataSource.OpenConnectionAsync();
 
-            await using var cmd = new NpgsqlCommand(@"
+            await using var cmd = new NpgsqlCommand(@$"
                 SELECT ""Status"" as status, COUNT(*) AS sum
-                FROM public.""horarium.jobs"" 
+                FROM {_scheme}.""horarium.jobs"" 
                 WHERE ""ParentJobId"" IS NULL
                 GROUP BY ""Status""
             ", conn);
@@ -224,24 +226,24 @@ namespace Horarium.PostgreSql
             
             await using var conn = await _dataSource.OpenConnectionAsync();
 
-            await using var cmd = new NpgsqlCommand(@"
+            await using var cmd = new NpgsqlCommand(@$"
                 WITH 
                     found AS (
                         SELECT ""JobId""
-                        FROM public.""horarium.jobs""
-                        WHERE (""ParentJobId"" IS NULL AND ""StartAt"" < NOW() AND ""Status"" IN (0, 4)) OR (""ParentJobId"" IS NULL AND ""StartedExecuting"" < NOW() - $1 AND ""Status"" = 1)
+                        FROM {_scheme}.""horarium.jobs""
+                        WHERE (""ParentJobId"" IS NULL AND ""StartAt"" < $3 AND ""Status"" IN (0, 4)) OR (""ParentJobId"" IS NULL AND ""StartedExecuting"" < $3 - $1 AND ""Status"" = 1)
                         LIMIT 1
                         FOR UPDATE SKIP LOCKED
                     ),
                     updated AS (
-                        UPDATE public.""horarium.jobs"" jobs
-                        SET ""Status"" = 1, ""ExecutedMachine"" = $2, ""StartedExecuting"" = NOW(), ""CountStarted"" = jobs.""CountStarted"" + 1
+                        UPDATE {_scheme}.""horarium.jobs"" jobs
+                        SET ""Status"" = 1, ""ExecutedMachine"" = $2, ""StartedExecuting"" = $3, ""CountStarted"" = jobs.""CountStarted"" + 1
                         FROM found
                         WHERE jobs.""JobId"" = found.""JobId""
                         RETURNING jobs.*
                     )
                 SELECT jobs.* 
-                FROM public.""horarium.jobs"" jobs 
+                FROM {_scheme}.""horarium.jobs"" jobs 
                 INNER JOIN updated ON jobs.""ParentJobId"" = updated.""JobId""
                 UNION
                 SELECT updated.*
@@ -250,6 +252,7 @@ namespace Horarium.PostgreSql
 
             cmd.Parameters.AddWithValue(NpgsqlDbType.Interval, obsoleteTime);
             cmd.Parameters.AddWithValue(NpgsqlDbType.Text, ValueOrNull(machineName));
+            cmd.Parameters.AddWithValue(NpgsqlDbType.TimestampTz, DateTime.UtcNow);
 
             await using var reader = await cmd.ExecuteReaderAsync();
             
@@ -324,8 +327,8 @@ namespace Horarium.PostgreSql
         {
             await using var conn = await _dataSource.OpenConnectionAsync();
 
-            await using var cmd = new NpgsqlCommand(@"
-                DELETE FROM public.""horarium.jobs"" WHERE ""JobId"" = $1
+            await using var cmd = new NpgsqlCommand(@$"
+                DELETE FROM {_scheme}.""horarium.jobs"" WHERE ""JobId"" = $1
             ", conn);
 
             cmd.Parameters.AddWithValue(NpgsqlDbType.Text, ValueOrNull(jobId));
@@ -339,8 +342,8 @@ namespace Horarium.PostgreSql
             
             await using var conn = await _dataSource.OpenConnectionAsync();
 
-            await using var cmd = new NpgsqlCommand(@"
-                UPDATE public.""horarium.jobs"" 
+            await using var cmd = new NpgsqlCommand(@$"
+                UPDATE {_scheme}.""horarium.jobs"" 
                 SET ""Status"" = 4, ""StartAt"" = $2, ""Error"" = $3
                 WHERE ""JobId"" = $1
             ", conn);
@@ -358,8 +361,8 @@ namespace Horarium.PostgreSql
             
             await using var conn = await _dataSource.OpenConnectionAsync();
 
-            await using var cmd = new NpgsqlCommand(@"
-                UPDATE public.""horarium.jobs"" 
+            await using var cmd = new NpgsqlCommand(@$"
+                UPDATE {_scheme}.""horarium.jobs"" 
                 SET ""Status"" = 0, ""StartAt"" = $2, ""Error"" = $3
                 WHERE ""JobId"" = $1
             ", conn);
