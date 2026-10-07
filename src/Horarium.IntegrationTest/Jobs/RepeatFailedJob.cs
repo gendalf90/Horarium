@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using Horarium.Interfaces;
 
@@ -7,21 +6,23 @@ namespace Horarium.IntegrationTest.Jobs
 {
     public class RepeatFailedJob : IJob<string>, IAllRepeatesIsFailed
     {
-        public static readonly ConcurrentQueue<DateTime> ExecutingTime = new ConcurrentQueue<DateTime>();
+        private readonly IDependency _dependency;
 
-        public static bool RepeatIsOk;
-        
-        public Task Execute(string param)
+        public RepeatFailedJob(IDependency dependency)
         {
-            ExecutingTime.Enqueue(DateTime.Now);
-            
-            throw new Exception();
+            _dependency = dependency;
         }
 
-        public Task FailedEvent(object param, Exception ex)
+        public async Task Execute(string param)
         {
-            RepeatIsOk = true;
-            return Task.CompletedTask;
+            await _dependency.Call(param);
         }
+
+        public async Task FailedEvent(object param, Exception ex)
+        {
+            await _dependency.Call(FailParam);
+        }
+
+        public static string FailParam => "failed";
     }
 }

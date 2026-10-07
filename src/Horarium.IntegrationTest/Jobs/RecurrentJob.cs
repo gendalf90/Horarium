@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using Horarium.Interfaces;
 
@@ -7,13 +5,18 @@ namespace Horarium.IntegrationTest.Jobs
 {
     public class RecurrentJob : IJobRecurrent
     {
-        public static readonly ConcurrentQueue<DateTime> ExecutingTime = new ConcurrentQueue<DateTime>();
-        
-        public Task Execute()
+        private readonly IDependency _dependency;
+
+        public RecurrentJob(IDependency dependency)
         {
-            ExecutingTime.Enqueue(DateTime.Now);
-            
-            return Task.CompletedTask;
+            _dependency = dependency;
         }
+
+        public async Task Execute()
+        {
+            await _dependency.Call(TestParam);
+        }
+
+        public static string TestParam => nameof(RecurrentJob);
     }
 }

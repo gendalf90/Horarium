@@ -15,7 +15,7 @@ Support Databases
 | ---------- | ----------------------------------------------------------------------- |
 | MongoDB    | Yes                                                                     |
 | In Memory  | Yes |
-| PostgreSQL | Not yet [#6](https://github.com/TinkoffCreditSystems/Horarium/issues/6) |
+| PostgreSQL | Yes |
 
 ## Getting started
 

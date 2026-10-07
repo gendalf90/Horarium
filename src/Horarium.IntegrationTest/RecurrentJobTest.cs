@@ -1,8 +1,12 @@
 using System;
-using System.Diagnostics;
+using System.Collections.Concurrent;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Horarium.IntegrationTest.Jobs;
+using Horarium.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
+using Moq;
 using Xunit;
 
 namespace Horarium.IntegrationTest
@@ -10,18 +14,51 @@ namespace Horarium.IntegrationTest
     [Collection(IntegrationTestCollection)]
     public class RecurrentJobTest : IntegrationTestBase
     {
+        private readonly IHorarium _horarium;
+        private readonly Mock<IDependency> _dependency = new();
+        private readonly TaskCompletionSource _completion = new();
+        private readonly ConcurrentQueue<DateTime> _executingTime = new();
+        private readonly ConcurrentQueue<DateTime> _executingTimeForUpdate = new();
+        
+        public RecurrentJobTest()
+        {
+            _dependency
+                .Setup(x => x.Call(RecurrentJob.TestParam))
+                .Callback(() => 
+                {
+                    if (_executingTime.Count < 10)
+                    {
+                        _executingTime.Enqueue(DateTime.Now);
+
+                        if (_executingTime.Count == 10)
+                        {
+                            _completion.SetResult();
+                        }
+                    }
+                })
+                .Returns(Task.CompletedTask);
+
+            _dependency
+                .Setup(x => x.Call(RecurrentJobForUpdate.TestParam))
+                .Callback(() => _executingTimeForUpdate.Enqueue(DateTime.Now))
+                .Returns(Task.CompletedTask);
+            
+            _horarium = Initialize(services =>
+            {
+                services.AddSingleton(_dependency.Object);
+                services.AddTransient<RecurrentJob>();
+                services.AddTransient<RecurrentJobForUpdate>();
+            });
+        }
+        
         [Fact]
         public async Task RecurrentJob_RunEverySeconds()
         {
-            var horarium = CreateHorariumServer();
+            await _horarium.CreateRecurrent<RecurrentJob>(Cron.Secondly()).Schedule();
 
-            await horarium.CreateRecurrent<RecurrentJob>(Cron.Secondly()).Schedule();
+            await _completion.Task.WaitAsync(TimeSpan.FromSeconds(15));
 
-            await Task.Delay(10000);
-
-            horarium.Dispose();
-
-            var executingTimes = RecurrentJob.ExecutingTime.ToArray();
+            var executingTimes = _executingTime.ToArray();
 
             Assert.NotEmpty(executingTimes);
 
@@ -42,24 +79,16 @@ namespace Horarium.IntegrationTest
         [Fact]
         public async Task Scheduler_SecondInstanceStart_MustUpdateRecurrentJobCronParameters()
         {
-            var watch = Stopwatch.StartNew();
-            var scheduler = CreateHorariumServer();
+            var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 
-            while (true)
+            while (!cancellation.IsCancellationRequested)
             {
-                await scheduler.CreateRecurrent<RecurrentJobForUpdate>(Cron.SecondInterval(1)).Schedule();
+                await _horarium.CreateRecurrent<RecurrentJobForUpdate>(Cron.SecondInterval(1)).Schedule();
 
-                if (watch.Elapsed > TimeSpan.FromSeconds(15))
-                {
-                    break;
-                }
+                await Task.Delay(TimeSpan.FromMilliseconds(100));
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(5));
-
-            scheduler.Dispose();
-
-            Assert.Single(RecurrentJobForUpdate.StackJobs);
+            Assert.Single(_executingTimeForUpdate);
         }
     }
 }

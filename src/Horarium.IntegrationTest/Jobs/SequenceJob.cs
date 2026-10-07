@@ -1,17 +1,20 @@
-﻿using System.Collections.Concurrent;
-using System.Threading.Tasks;
+﻿using System.Threading.Tasks;
 using Horarium.Interfaces;
 
 namespace Horarium.IntegrationTest.Jobs
 {
     public class SequenceJob : IJob<int>
     {
-        public static readonly ConcurrentQueue<int> QueueJobs = new ConcurrentQueue<int>();
+        private readonly IDependency _dependency;
 
-        public Task Execute(int param)
+        public SequenceJob(IDependency dependency)
         {
-            QueueJobs.Enqueue(param);
-            return Task.CompletedTask;
+            _dependency = dependency;
+        }
+
+        public async Task Execute(int param)
+        {
+            await _dependency.Call(param.ToString());
         }
     }
 }

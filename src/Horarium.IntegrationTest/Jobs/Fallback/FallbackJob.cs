@@ -5,13 +5,16 @@ namespace Horarium.IntegrationTest.Jobs.Fallback
 {
     public class FallbackJob : IJob<int>
     {
-        public static int ExecutedCount { get; set; }
-        
-        public Task Execute(int param)
+        private readonly IDependency _dependency;
+
+        public FallbackJob(IDependency dependency)
         {
-            ExecutedCount++;
-            
-            return Task.CompletedTask;
+            _dependency = dependency;
+        }
+        
+        public async Task Execute(int param)
+        {
+            await _dependency.Call(param.ToString());
         }
     }
 }
